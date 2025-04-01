@@ -4,9 +4,9 @@ import os         # Import the 'os' module
 import re
 
 # --- Configuration ---
-st.set_page_config(page_title="Grounding Predictor", layout="wide")
+st.set_page_config(page_title="AI Grounding Predictor", layout="wide")
 st.title("🔮 Prompt Grounding Likelihood Predictor")
-st.caption("Predict if a prompt is likely to require grounding and estimate the confidence of that prediction.")
+st.caption("Predict if a prompt is likely to require grounding and estimate the confidence of that prediction. Grounding refers to AI's need to retrieve data outside of it's current knowledge base. Grounding is potentially an opportunity to influence the AI results.")
 
 # --- Access API Key using Environment Variables (for Posit Connect) ---
 api_key = None
