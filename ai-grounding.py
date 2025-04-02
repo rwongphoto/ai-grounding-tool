@@ -11,11 +11,7 @@ st.caption("Predict if a prompt is likely to require grounding and estimate the 
 # --- Access API Key using Environment Variables (for Posit Connect) ---
 api_key = None
 api_key_configured = False
-
-# Define the expected environment variable name
 ENV_VAR_NAME = "GOOGLE_API_KEY"
-
-# Attempt to get the API key from environment variables
 api_key = os.getenv(ENV_VAR_NAME)
 
 if not api_key:
@@ -23,32 +19,26 @@ if not api_key:
     st.sidebar.caption(f"Please ask your Posit Connect administrator or the content publisher to set the '{ENV_VAR_NAME}' environment variable for this application.")
     st.info(f"API Key is missing. Please ensure '{ENV_VAR_NAME}' is configured as an environment variable on Posit Connect.", icon="🔑")
 else:
-    # Minimal check to see if the key looks plausible (optional, but can catch empty strings)
-    if len(api_key.strip()) < 10: # Example basic check
+    if len(api_key.strip()) < 10:
          st.sidebar.error(f"The value found for '{ENV_VAR_NAME}' seems too short. Please check the configuration on Posit Connect.")
-         api_key = None # Treat as invalid
-    # If key looks okay (or you skip the check), proceed with configuration
+         api_key = None
 
-
-# --- API Configuration & Model Selection (only if key seems valid) ---
+# --- API Configuration & Model Selection ---
 model = None
 selected_model_name = None
 
-if api_key: # Proceed only if api_key was successfully retrieved and deemed valid
+if api_key:
     try:
         genai.configure(api_key=api_key)
-        api_key_configured = True # Mark key as successfully configured
+        api_key_configured = True
 
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         preferred_models = [m for m in available_models if 'gemini' in m and 'vision' not in m and 'embed' not in m]
-        if not preferred_models:
-            preferred_models = available_models
+        if not preferred_models: preferred_models = available_models
 
         default_model = 'models/gemini-1.5-flash-latest'
-        if default_model not in preferred_models and preferred_models:
-            default_model = preferred_models[0]
-        elif not preferred_models:
-             default_model = None
+        if default_model not in preferred_models and preferred_models: default_model = preferred_models[0]
+        elif not preferred_models: default_model = None
 
         if default_model:
             selected_model_name = st.sidebar.selectbox(
@@ -60,13 +50,11 @@ if api_key: # Proceed only if api_key was successfully retrieved and deemed vali
             st.sidebar.success(f"API Key loaded. Using model: `{selected_model_name}`")
         else:
             st.sidebar.error("No suitable text generation models found for this API key.")
-            api_key_configured = False # Mark as not configured if model selection fails
+            api_key_configured = False
 
     except Exception as e:
         st.sidebar.error(f"Error configuring API key or listing models: {e}")
-        api_key_configured = False # Mark as not configured on error
-# No 'else' needed here, handled by initial api_key check
-
+        api_key_configured = False
 
 # --- User Input ---
 st.subheader("1. Enter the Prompt, Question, or Query to Analyze")
@@ -78,15 +66,13 @@ user_prompt = st.text_area(
 )
 
 # --- Prediction Logic ---
-# Button is disabled if API key wasn't configured OR model isn't selected OR prompt is empty
 predict_button = st.button(
     "Predict Grounding Likelihood",
     disabled=not api_key_configured or not model or not user_prompt,
     key="predict_button"
 )
 
-if predict_button and api_key_configured and model: # Double-check conditions
-    # --- Construct the Meta-Prompt (same as before) ---
+if predict_button and api_key_configured and model:
     prediction_prompt = f"""
     **Task:** Analyze the following "User Prompt". Predict whether an AI attempting to answer this prompt accurately and comprehensively would likely require **grounding**. Grounding means accessing external, specific, or up-to-date information beyond its general knowledge base (e.g., performing a web search, checking recent data feeds).
 
@@ -116,41 +102,32 @@ if predict_button and api_key_configured and model: # Double-check conditions
 
     try:
         with st.spinner(f"Asking `{selected_model_name}` to predict grounding need and confidence..."):
-            generation_config_predict = genai.types.GenerationConfig(
-                temperature=0.2
-            )
+            generation_config_predict = genai.types.GenerationConfig(temperature=0.2)
             prediction_response = model.generate_content(
                 prediction_prompt,
                 generation_config=generation_config_predict,
             )
             prediction_text = prediction_response.text
 
-        st.subheader("2. Grounding Likelihood Prediction") # Renamed for consistency
+        st.subheader("2. Grounding Likelihood Prediction")
 
-        # --- Parsing Block (same as before) ---
         likelihood = "Could not parse"
         confidence_score = None
         reasoning = prediction_text
-
         likelihood_match = re.search(r"^\s*Likelihood:\s*(.*)", prediction_text, re.MULTILINE | re.IGNORECASE)
         confidence_match = re.search(r"^\s*Confidence:\s*(\d{1,3})\s*%", prediction_text, re.MULTILINE | re.IGNORECASE)
         reasoning_match = re.search(r"^\s*Reasoning:\s*(.*)", prediction_text, re.MULTILINE | re.IGNORECASE | re.DOTALL)
 
         if likelihood_match:
             potential_likelihood = likelihood_match.group(1).strip().lower()
-            if "likely requires grounding" in potential_likelihood or "requires grounding" in potential_likelihood:
-                likelihood = "Likely Requires Grounding"
-            elif "likely self-contained" in potential_likelihood or "self-contained" in potential_likelihood:
-                likelihood = "Likely Self-Contained"
-            elif "borderline" in potential_likelihood or "ambiguous" in potential_likelihood:
-                likelihood = "Borderline / Ambiguous"
-
+            if "likely requires grounding" in potential_likelihood or "requires grounding" in potential_likelihood: likelihood = "Likely Requires Grounding"
+            elif "likely self-contained" in potential_likelihood or "self-contained" in potential_likelihood: likelihood = "Likely Self-Contained"
+            elif "borderline" in potential_likelihood or "ambiguous" in potential_likelihood: likelihood = "Borderline / Ambiguous"
         if confidence_match:
             try:
                 confidence_score = int(confidence_match.group(1))
                 if not (0 <= confidence_score <= 100): confidence_score = None
             except (ValueError, IndexError): confidence_score = None
-
         if reasoning_match:
             reasoning = reasoning_match.group(1).strip()
         else:
@@ -159,63 +136,41 @@ if predict_button and api_key_configured and model: # Double-check conditions
              if confidence_match: temp_reasoning = temp_reasoning.replace(confidence_match.group(0), "", 1)
              reasoning = temp_reasoning.strip()
 
-        # --- Display parsed results (same as before) ---
         confidence_text = f"(Confidence: {confidence_score}%)" if confidence_score is not None else "(Confidence: Not Provided)"
+        if likelihood == "Likely Requires Grounding": st.warning(f"**Prediction: {likelihood}**  🌐 {confidence_text}")
+        elif likelihood == "Likely Self-Contained": st.success(f"**Prediction: {likelihood}** 🧠 {confidence_text}")
+        elif likelihood == "Borderline / Ambiguous": st.info(f"**Prediction: {likelihood}** 🤔 {confidence_text}")
+        else: st.error(f"**Prediction: {likelihood}** ❓")
 
-        if likelihood == "Likely Requires Grounding":
-            st.warning(f"**Prediction: {likelihood}**  🌐 {confidence_text}")
-        elif likelihood == "Likely Self-Contained":
-            st.success(f"**Prediction: {likelihood}** 🧠 {confidence_text}")
-        elif likelihood == "Borderline / Ambiguous":
-            st.info(f"**Prediction: {likelihood}** 🤔 {confidence_text}")
-        else: # Could not parse Likelihood
-            st.error(f"**Prediction: {likelihood}** ❓")
-
-        # Display reasoning if likelihood was parsed, otherwise show raw output.
         if likelihood != "Could not parse":
-            st.markdown("**Reasoning from AI:**")
-            st.markdown(reasoning)
+            st.markdown("**Reasoning from AI:**"); st.markdown(reasoning)
         else:
-             st.markdown("**AI's Raw Prediction Output:**")
-             st.markdown(prediction_text)
-
+             st.markdown("**AI's Raw Prediction Output:**"); st.markdown(prediction_text)
         if confidence_score is not None or likelihood != "Could not parse":
              st.caption("ℹ️ The confidence score is the AI's own estimation and may not be statistically precise.")
 
-        # --- Expanders for Debugging (same as before) ---
+        # --- Expanders for Debugging ---
         with st.expander("Show Raw AI Prediction Response"):
             st.text(prediction_text)
-        with st.expander("Show Prompt Sent to Prediction AI"):
-            st.text(prediction_prompt)
+        # The "Show Prompt Sent to Prediction AI" expander has been removed/commented out.
+        # with st.expander("Show Prompt Sent to Prediction AI"):
+        #     st.text(prediction_prompt)
 
     except Exception as e:
         st.error(f"An error occurred during prediction API call: {e}")
         try:
-            if 'prediction_response' in locals() and hasattr(prediction_response, 'candidates'):
-                 st.error(f"Prediction Candidate info: {prediction_response.candidates}")
-            elif 'prediction_response' in locals() and hasattr(prediction_response, 'prompt_feedback'):
-                 st.error(f"Prediction Prompt Feedback: {prediction_response.prompt_feedback}")
-            else:
-                 st.error("Could not retrieve detailed error information (e.g., safety blocking).")
-        except Exception as e_detail:
-             st.error(f"Error retrieving details: {e_detail}")
-
+            if 'prediction_response' in locals() and hasattr(prediction_response, 'candidates'): st.error(f"Prediction Candidate info: {prediction_response.candidates}")
+            elif 'prediction_response' in locals() and hasattr(prediction_response, 'prompt_feedback'): st.error(f"Prediction Prompt Feedback: {prediction_response.prompt_feedback}")
+            else: st.error("Could not retrieve detailed error information (e.g., safety blocking).")
+        except Exception as e_detail: st.error(f"Error retrieving details: {e_detail}")
 
 elif predict_button:
-    # Add checks for why the button might be pressed but logic doesn't run
-    if not api_key_configured:
-         st.error("Prediction failed: API Key is not configured correctly via environment variables on Posit Connect.")
-    elif not model:
-         st.error("Prediction failed: AI Model could not be initialized.")
-    elif not user_prompt:
-        st.error("Prediction failed: Prompt to analyze is empty.")
+    if not api_key_configured: st.error("Prediction failed: API Key is not configured correctly via environment variables on Posit Connect.")
+    elif not model: st.error("Prediction failed: AI Model could not be initialized.")
+    elif not user_prompt: st.error("Prediction failed: Prompt to analyze is empty.")
 
-# Add a general message if the API key wasn't configured at the start
-if not api_key_configured and not api_key: # Show only if key wasn't even found
+if not api_key_configured and not api_key:
     st.warning(f"Please ensure the '{ENV_VAR_NAME}' environment variable is set correctly on Posit Connect to enable prediction.")
 
-
-# --- Add Attribution Link ---
-st.divider() # Optional: adds a visual separator line
+st.divider()
 st.markdown("Created by [The SEO Consultant.ai](https://theseoconsultant.ai/)")
-# --- End of Script ---
